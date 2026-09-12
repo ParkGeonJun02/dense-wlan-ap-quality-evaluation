@@ -1,0 +1,36 @@
+찐찐막_GA 전체 상태 전환형 적합도 재분석 핵심 결과
+
+상태 판정: RTT >= 22 ms 또는 UTIL >= 56%
+GA 입력: RTT, UTIL
+GA 입력 제외: RSSI, Link, PacketLoss, Upload, Download
+실제 전송률(Upload+Download): GA 적합도 및 성능 평가 기준으로만 사용
+GA 목적함수: 정상은 RSSI, 혼잡은 RTT·UTIL 점수를 적용한 393개 전체 하이브리드 Pearson r
+
+제외 처리:
+- NaN/공란 포함 행 5개 제외
+- NATURAL_1H_R1 2행(PacketLoss 26.6667%) 제외
+- FREE1_1H_R2 2행(PacketLoss 20%) 제외
+- 중복 측정값은 제거하지 않음
+
+혼합환경 유효표본: 393개 (정상 321개, 혼잡 72개)
+GA 가중치: RTT=0.580945, UTIL=0.419055
+GA 전체 하이브리드 학습 r=0.766379
+GA 5-fold OOF r=0.761621
+GA 세션단위 OOF r=0.714623
+0.001 간격 전수검증 최적: RTT=0.581, UTIL=0.419, r=0.766379
+
+환경별 3방식 Pearson r:
+- RSSI 변화 환경 / 기존 RSSI: r=0.817
+- RSSI 변화 환경 / 래퍼런스 APQI: r=0.759
+- RSSI 변화 환경 / GA HOPE: r=0.795
+- RSSI 양호·혼잡 환경 / 기존 RSSI: r=0.222
+- RSSI 양호·혼잡 환경 / 래퍼런스 APQI: r=0.530
+- RSSI 양호·혼잡 환경 / GA HOPE: r=0.586
+- 혼합환경 / 기존 RSSI: r=0.703
+- 혼합환경 / 래퍼런스 APQI: r=0.700
+- 혼합환경 / GA HOPE: r=0.766
+
+해석 주의:
+- GA는 393개 전체 상태 전환형 점수의 상관성을 최적화하며, 혼잡 표본 내부 상관만을 최적화한 이전 코드와 목적함수가 다름.
+- Pearson r, Spearman rho, 95% bootstrap CI, 5-fold 및 세션단위 OOF 결과를 함께 해석해야 함.
+- 결과를 임의 조정하지 않았으며, APQI는 원문 산식·가중치·후보필터를 실측 RSSI/UTIL 범위에서 부분 재현함.
