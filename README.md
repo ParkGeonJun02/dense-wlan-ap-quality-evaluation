@@ -1,142 +1,136 @@
-# Dense WLAN AP Quality Evaluation
+# 밀집 WLAN 환경의 AP 품질 평가
 
-> A state-switching hybrid AP quality-score study for dense indoor WLAN environments.
+> 밀집 실내 WLAN 환경을 위한 상태 전환형 하이브리드 AP 품질 점수 평가 프로젝트
 
-This project analyzes the limitation of RSSI-only access point (AP) evaluation in a dense 5 GHz WLAN environment. It implements a hybrid quality score that retains RSSI in normal conditions and uses RTT and channel utilization (UTIL) in congested conditions.
+이 프로젝트는 5 GHz 밀집 WLAN 환경에서 RSSI만으로 access point(AP)를 평가할 때의 한계를 분석한다. 정상 상태에서는 RSSI를 적용하고, 혼잡 상태에서는 round trip time(RTT)과 channel utilization(UTIL)을 활용하는 하이브리드 품질 점수를 구현·평가한다.
 
-> **Current scope**
-> The available dataset records one associated target AP per measurement session. Therefore, this repository evaluates the relationship between AP quality scores and measured throughput; it does not claim Top-1 AP-selection accuracy among simultaneous multiple AP candidates.
-
----
-
-## 1. Project overview
-
-RSSI-only evaluation can favor an AP with a strong radio signal even when its channel is congested. This project evaluates a state-switching quality score:
-
-- **Normal state:** RSSI-based quality score
-- **Congested state:** weighted RTT and UTIL score, without RSSI
-
-The goal is to determine whether the score better reflects measured communication throughput in conditions where RSSI alone is insufficient.
-
-### Core workflow
-
-1. Collect RSSI, link information, UTIL, RTT, packet loss, and upload/download throughput.
-2. Classify each sample as normal or congested using RTT and UTIL conditions.
-3. Apply RSSI scoring in normal conditions and RTT/UTIL scoring in congested conditions.
-4. Determine RTT/UTIL weights using a genetic algorithm (GA) and verify them with grid search.
-5. Compare RSSI, partially reproduced APQI, and hybrid scores against measured throughput.
+> **연구 범위**  
+> 현재 데이터셋은 각 측정 세션에서 연결된 하나의 대상 AP를 기록한다. 따라서 이 저장소는 AP 품질 점수와 실측 전송률의 관계를 평가하며, 여러 후보 AP 중 최적 AP를 선택하는 정확도를 주장하지 않는다.
 
 ---
 
-## 2. Measurement record format
+## 프로젝트 개요
 
-Each record is collected in this order: signal/link information, channel utilization, Ping-based RTT and packet loss, then actual upload/download throughput.
+RSSI 기반 평가는 무선 신호가 강하더라도 채널이 혼잡한 AP를 높은 품질로 평가할 수 있다. 본 프로젝트는 상태에 따라 평가 지표를 전환한다.
 
-![Measurement record format](assets/measurement_record_format.png)
+- **정상 상태:** RSSI 기반 품질 점수
+- **혼잡 상태:** RSSI를 제외한 RTT·UTIL 가중 품질 점수
 
-Session locations, target AP areas, measurement modes, and sample counts are listed in [docs/measurement_sessions.md](docs/measurement_sessions.md).
+분석 절차는 다음과 같다.
+
+1. RSSI, 링크 정보, UTIL, RTT, 패킷 손실률, 업로드·다운로드 전송률을 수집한다.
+2. RTT와 UTIL 조건으로 각 표본을 정상 또는 혼잡 상태로 분류한다.
+3. 정상 상태에는 RSSI 점수를, 혼잡 상태에는 RTT·UTIL 점수를 적용한다.
+4. 유전 알고리즘(GA)과 전수 탐색으로 RTT·UTIL 가중치를 탐색한다.
+5. RSSI 방식, APQI 부분 재현 방식 및 하이브리드 점수를 실측 전송률과 비교한다.
 
 ---
 
-## 3. Dataset
+## 측정 기록 형식
 
-The integrated workbook contains 400 raw samples. After excluding five incomplete records and two identified measurement-error records, the submitted-version analysis uses 393 valid samples.
+각 표본은 신호·링크 정보, 채널 사용률, Ping 기반 RTT·패킷 손실률, 실제 업로드·다운로드 전송률 순으로 수집하였다.
 
-| Environment | Valid samples | Normal | Congested |
+![측정 기록 형식](assets/measurement_record_format.png)
+
+측정 세션의 위치, 대상 AP 영역, 측정 상태 및 표본 수는 [docs/measurement_sessions.md](docs/measurement_sessions.md)에 정리하였다.
+
+---
+
+## 데이터셋
+
+통합 워크북은 총 400개 원시 표본으로 구성된다. 누락 값이 있는 5개 표본과 측정 오류로 확인된 2개 표본을 제외하여, 제출본 분석에는 393개 유효 표본을 사용하였다.
+
+| 환경 | 유효 표본 | 정상 | 혼잡 |
 |---|---:|---:|---:|
-| RSSI-variation environment | 312 | 298 | 14 |
-| Good-RSSI, congestion-dominant environment | 81 | 23 | 58 |
-| Mixed environment | 393 | 321 | 72 |
+| RSSI 변화 환경 | 312 | 298 | 14 |
+| RSSI 양호·혼잡 우세 환경 | 81 | 23 | 58 |
+| 혼합 환경 | 393 | 321 | 72 |
 
-The congestion-dominant samples were collected from induced-congestion conditions in the Open Reading Room 2 AP area. The detailed congestion-generation procedure is being verified for the paper revision.
+혼잡 우세 표본은 오픈열람실 2 AP 영역에서 혼잡 조건을 구성하여 수집하였다. 정확한 혼잡 유도 절차는 논문 수정 과정에서 검증 중이다.
 
 ---
 
-## 4. Method
+## 방법
 
-### State classification
+### 상태 판정
 
-The submitted-version implementation classifies a sample as congested when either condition is met:
-
-```text
-RTT >= 22 ms OR UTIL >= 56%
-```
-
-These values are environment-specific, data-derived operating thresholds rather than universal WLAN thresholds. The revision work will add training-only threshold selection and sensitivity analysis.
-
-### Hybrid score
+제출본에서는 다음 중 하나를 만족하면 혼잡 상태로 분류한다.
 
 ```text
-Normal state:    Score = normalized RSSI
-Congested state: Score = w_RTT * normalized RTT + w_UTIL * normalized UTIL
+RTT >= 22 ms 또는 UTIL >= 56%
 ```
 
-For RTT and UTIL, lower raw values correspond to higher quality scores.
+이는 보편적인 WLAN 임계값이 아니라, 해당 실험 환경과 데이터에서 도출한 운용 임계값이다.
 
-### Weight search
+### 하이브리드 점수와 가중치
 
-The submitted-version full-data fit obtained:
+```text
+정상 상태: Score = 정규화된 RSSI
+혼잡 상태: Score = w_RTT × 정규화된 RTT + w_UTIL × 정규화된 UTIL
+```
+
+RTT와 UTIL은 원시 값이 낮을수록 더 높은 품질 점수가 되도록 변환한다. 제출본의 전체 자료 적합 결과는 다음과 같다.
 
 ```text
 w_RTT  = 0.581
 w_UTIL = 0.419
 ```
 
-The GA uses the Pearson correlation between the hybrid score and upload-plus-download throughput as its fitness. Grid search at 0.001 intervals reached the same optimum. GA is therefore treated as an offline weight-search procedure rather than the main claimed contribution.
+GA의 적합도는 하이브리드 AP 점수와 업로드·다운로드 전송률 합 간 Pearson 상관계수이다. 0.001 간격 전수 탐색에서도 동일한 최적값이 확인되었다. GA는 핵심 기여라기보다 오프라인 가중치 탐색 절차로 해석한다.
 
 ---
 
-## 5. Submitted-version results
+## 제출본 결과
 
-| Environment | RSSI | APQI partial reproduction | Hybrid score |
+| 환경 | RSSI | APQI 부분 재현 | 하이브리드 점수 |
 |---|---:|---:|---:|
-| RSSI-variation | 0.817 | 0.759 | 0.795 |
-| Good-RSSI, congestion-dominant | 0.222 | 0.530 | 0.586 |
-| Mixed | 0.703 | 0.700 | 0.766 |
+| RSSI 변화 환경 | 0.817 | 0.759 | 0.795 |
+| RSSI 양호·혼잡 우세 환경 | 0.222 | 0.530 | 0.586 |
+| 혼합 환경 | 0.703 | 0.700 | 0.766 |
 
-Values are Pearson correlation coefficients between the quality score and measured upload-plus-download throughput. These full-data results are retained for traceability; they must not be interpreted as independent generalization performance.
+값은 품질 점수와 실측 업로드·다운로드 전송률 합 간 Pearson 상관계수이다. 전체 자료 적합 결과는 추적성을 위해 보관하며, 독립적인 일반화 성능으로 해석하지 않는다.
 
-![Submitted-version score comparison](results/figures/method_comparison.png)
-
----
-
-## 6. Revision status and limitations
-
-The paper is under revision. The next analysis version will add:
-
-- Session-level hold-out validation with train-only weight, threshold, and normalization estimation
-- Threshold sensitivity analysis
-- Non-switching linear-score and soft-switching comparison baselines
-- Bootstrap stability analysis for RTT/UTIL weights
-- Clear APQI reproduction scope and measurement-protocol documentation
-
-Important limitations:
-
-- No simultaneous multi-AP candidate set exists in the current dataset.
-- The study is limited to one indoor library building, one laptop, and a 5 GHz WLAN environment.
-- The submitted full-data results have training/evaluation overlap and are not standalone evidence of generalization.
+![제출본 방식별 점수 비교](results/figures/method_comparison.png)
 
 ---
 
-## 7. Repository structure
+## 수정 현황 및 한계
+
+논문은 현재 수정 중이며, 이후 분석에는 다음을 포함할 예정이다.
+
+- 세션 단위 홀드아웃 검증: 학습 세트에서만 가중치·임계값·정규화 범위를 결정
+- 임계값 민감도 분석
+- 상태 전환 없는 선형 점수 및 완만한 상태 전환 방식과의 비교
+- RTT·UTIL 가중치의 bootstrap 안정성 분석
+- APQI 부분 재현 범위와 측정 절차의 명확한 문서화
+
+주요 한계는 다음과 같다.
+
+- 현재 데이터셋에는 동시에 관측한 복수 후보 AP 집합이 없다.
+- 한 개 실내 도서관 건물, 한 대의 노트북, 5 GHz WLAN 환경에 한정된다.
+- 제출본의 전체 자료 결과는 학습과 평가가 중복되므로, 일반화 성능의 단독 근거로 사용할 수 없다.
+
+---
+
+## 저장소 구조
 
 ```text
 .
-├── src/                    # Main reproducible analysis script
-├── data/                   # Integrated measurement workbook
+├── src/                    # 재현 가능한 핵심 분석 코드
+├── data/                   # 통합 측정 워크북
 ├── results/
-│   ├── figures/            # Generated figures
-│   └── tables/             # Generated CSV results
-├── assets/                 # README visual assets
-├── docs/                   # Session summary and project context
-├── paper/                  # Submitted manuscript and review documents
+│   ├── figures/            # 생성된 그림
+│   └── tables/             # 생성된 CSV 결과
+├── assets/                 # README용 시각 자료
+├── docs/                   # 세션 요약 및 프로젝트 문맥
+├── paper/                  # 제출 논문 및 심사 문서
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## 8. Reproduction
+## 재현 방법
 
 ```bash
 python -m venv .venv
@@ -145,12 +139,12 @@ pip install -r requirements.txt
 python src/final_ga_analysis.py
 ```
 
-The script reads `data/HOPE_측정자료_상황별정리.xlsx` and writes analysis artifacts to `results/`.
+스크립트는 `data/HOPE_측정자료_상황별정리.xlsx`를 읽고, 분석 산출물을 `results/`에 저장한다.
 
 ---
 
-## 9. Source materials
+## 자료 안내
 
-- The current manuscript and review documents are retained under `paper/` for revision tracking.
-- Third-party reference papers are not redistributed in this repository.
-- Original measurement screenshots remain outside this repository; only one measurement-record-format image is included for documentation.
+- 현재 논문과 심사 문서는 수정 이력 관리를 위해 `paper/`에 보관한다.
+- 제3자 저작권이 있는 참고문헌 원문은 이 저장소에 포함하지 않는다.
+- 원본 측정 스크린샷은 저장소 외부에 보관하며, 문서화를 위해 측정 기록 형식 이미지 1장만 포함한다.
